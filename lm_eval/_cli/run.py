@@ -453,7 +453,14 @@ class Run(SubCommand):
                 evaluation_tracker.push_results_to_hub
                 or evaluation_tracker.push_samples_to_hub
             ):
-                evaluation_tracker.recreate_metadata_card()
+                try:
+                    evaluation_tracker.recreate_metadata_card()
+                except Exception as e:
+                    eval_logger.warning(
+                        "Could not recreate metadata card on the Hub (e.g. repo not created due to auth). "
+                        "Local results and samples were still saved."
+                    )
+                    eval_logger.info(repr(e))
 
             # Print results
             cfg.model_args.pop("trust_remote_code", None)

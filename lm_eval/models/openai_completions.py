@@ -208,22 +208,33 @@ class LocalChatCompletion(LocalCompletionsAPI):
         }
 
     @staticmethod
-    def parse_generations(outputs: Union[Dict, List[Dict]], **kwargs) -> List[str]:
-        res = []
+    def parse_generations(
+        outputs: Union[Dict, List[Dict]], **kwargs
+    ) -> List[Tuple[str, str]]:
+        """Return list of (content, reasoning) for logging; metrics use content only."""
+        res: List[Tuple[str, str]] = []
         if not isinstance(outputs, list):
             outputs = [outputs]
         for out in outputs:
             try:
-                tmp = [None] * len(out["choices"])
+                tmp: List[Tuple[str, str]] = [("", "")] * len(out["choices"])
                 for choices in out["choices"]:
-                    tmp[choices["index"]] = choices["message"]["content"]
+                    msg = choices.get("message", {})
+                    content = msg.get("content") or ""
+                    if content is None:
+                        content = ""
+                    reasoning = (
+                        msg.get("reasoning")
+                        or msg.get("reasoning_content")
+                        or ""
+                    )
+                    if reasoning is None:
+                        reasoning = ""
+                    tmp[choices["index"]] = (content, reasoning)
+                res = res + tmp
             except Exception as e:
-                # account for cases that generation is blocked by content filter,
-                # which is common for Azure OpenAI Service,
-                # not sure if need to account for multiple choices
                 eval_logger.warning(f"Could not parse generations: {e}")
-                tmp = [""]
-            res = res + tmp
+                res = res + [("", "")]
         return res
 
     def tok_encode(

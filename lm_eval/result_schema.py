@@ -188,6 +188,9 @@ class SampleResult(TypedDict, extra_items=float):
     Generation: ``list[list[str]]`` — requests × repeats × generated text.
     Multiple-choice: ``list[list[list[str]]]`` — requests × repeats × ``[log_prob, is_greedy]``."""
 
+    reasoning: NotRequired[list[list[str]]]
+    """Per-request reasoning strings when the model API provides them (e.g. ``reasoning`` / ``reasoning_content``). Same shape as ``resps``; key absent or empty when not provided."""
+
     filtered_resps: list[str] | list[list[str]]
     """Responses after filter application.  Per-request.
     Generation: ``list[str]``.

@@ -587,7 +587,13 @@ def evaluate(
 
         # put responses from model into a list of length K for each request.
         for x, req in zip(resps, cloned_reqs, strict=True):
-            req.resps.append(x)
+            if isinstance(x, tuple):
+                content, reasoning = x
+                req.resps.append(content)
+                req.reasoning.append(reasoning if reasoning is not None else "")
+            else:
+                req.resps.append(x)
+                req.reasoning.append("")
 
         if lm.world_size > 1:
             lm.barrier()
@@ -633,6 +639,7 @@ def evaluate(
                         "target": target,
                         "arguments": [req.args for req in requests],
                         "resps": [req.resps for req in requests],
+                        "reasoning": [getattr(req, "reasoning", []) for req in requests],
                         "filtered_resps": [
                             req.filtered_resps[filter_key] for req in requests
                         ],

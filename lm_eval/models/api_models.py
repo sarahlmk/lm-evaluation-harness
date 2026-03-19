@@ -537,9 +537,11 @@ class TemplateAPI(TemplateLM):
                 )
             )
             if cache_keys:
-                for res, cache in zip(answers, cache_keys):
-                    if res is not None:
-                        self.cache_hook.add_partial(cache_method, cache, res)
+                for ans, cache in zip(answers, cache_keys):
+                    if ans is not None:
+                        content = ans[0] if isinstance(ans, tuple) else ans
+                        if content is not None:
+                            self.cache_hook.add_partial(cache_method, cache, content)
             return answers
         # If the retries also fail
         except BaseException as e:
@@ -682,8 +684,9 @@ class TemplateAPI(TemplateLM):
 
     def generate_until(
         self, requests: List[Instance], disable_tqdm: bool = False
-    ) -> List[str]:
+    ) -> Union[List[str], List[Tuple[str, str]]]:
         res = []
+        res_reasoning: List[str] = []
 
         def _collate_gen(_requests):
             # sort by the length of the non-tokenized contexts
@@ -763,24 +766,25 @@ class TemplateAPI(TemplateLM):
                     generate=True,
                     gen_kwargs=copy.deepcopy(all_gen_kwargs[0]),
                 )
-                for generated_text, context in zip(
-                    self.parse_generations(
-                        outputs=outputs,
-                        contexts=contexts,
-                    ),
-                    contexts,
-                ):
-                    # Always append to res to maintain the correct number of items
-                    # even if generation failed (generated_text is None)
+                parsed = self.parse_generations(
+                    outputs=outputs,
+                    contexts=contexts,
+                )
+                for parsed_item, context in zip(parsed, contexts, strict=True):
+                    if isinstance(parsed_item, tuple):
+                        generated_text, reasoning = parsed_item
+                    else:
+                        generated_text, reasoning = parsed_item, ""
                     if generated_text is None:
                         eval_logger.warning(
                             "API returned null content. Check reasoning_content field or generation limits..."
                         )
                         res.append("")
+                        res_reasoning.append("")
                     else:
                         res.append(generated_text)
+                        res_reasoning.append(reasoning if reasoning is not None else "")
 
-                    # partial caching only for successful generations
                     if generated_text is not None and context is not None:
                         self.cache_hook.add_partial(
                             "generate_until",
@@ -817,17 +821,26 @@ class TemplateAPI(TemplateLM):
                         )
                     )
                 )
-                # Convert None values to empty strings to maintain consistency
                 for r in results:
-                    if r is None:
+                    if isinstance(r, tuple):
+                        content, reasoning = r
+                        res.append("" if content is None else content)
+                        res_reasoning.append("" if reasoning is None else reasoning)
+                    elif r is None:
                         eval_logger.warning(
                             "API returned null content. Check reasoning_content field or generation limits."
                         )
                         res.append("")
+                        res_reasoning.append("")
                     else:
                         res.append(r)
+                        res_reasoning.append("")
 
-        return re_ord.get_original(res)
+        reordered_content = re_ord.get_original(res)
+        reordered_reasoning = re_ord.get_original(res_reasoning)
+        if all(r == "" for r in reordered_reasoning):
+            return reordered_content
+        return list(zip(reordered_content, reordered_reasoning, strict=True))
 
     def loglikelihood_rolling(
         self, requests: List[Instance], disable_tqdm: bool = False
